@@ -381,7 +381,7 @@ def create_frequency_windows(search_range, Tobs, chandrasekhar_limit=1.4):
     current_frequency = search_range[0]
     while current_frequency < search_range[1]:
         max_signal_length = max_signal_bandwidth(current_frequency, Tobs, chandrasekhar_limit)
-        window_length = np.min([max_signal_length, 0.001])
+        window_length = np.min([max_signal_length*2, 0.001])
         upper_limit = current_frequency+window_length
         frequencies.append([current_frequency, upper_limit])
         current_frequency = deepcopy(upper_limit)
