@@ -160,6 +160,9 @@ def frequency_derivative_tyson_lower(f):
     return -5*10**-6*f**(13/3)
 
 def frequency_derivative_mojito_lower(f):
+    return -2*10**-20*(f/0.0004)**(16/3)
+
+def frequency_derivative_mojito_lower_reduced(f):
     return -2*10**-21*(f/0.0004)**(16/3)
 
 def frequency_derivative_mojito_upper(f):
