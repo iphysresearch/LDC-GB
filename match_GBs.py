@@ -463,7 +463,7 @@ class GBMatchingPipeline:
         """Filter injected catalog to relevant frequency windows."""
         cache_fn = os.path.join(
             self.config.save_path, 
-            f'pGB_injected_no_SNR_{save_name}.h5'
+            f'pGB_injected_{save_name}.h5'
         )
         
         if os.path.exists(cache_fn):
@@ -571,7 +571,7 @@ def main():
     found_sources = pipeline.prepare_found_sources(found_sources)
     injected_df = pipeline.load_injected_catalog()
     injected_df = pl.DataFrame(injected_df, schema=PARAM_NAMES)
-    injected_df = pipeline.prepare_injected_for_matching(injected_df, config.save_name)
+    injected_df = pipeline.prepare_injected_for_matching(injected_df)
     
     # Sort found sources
     found_df = pl.DataFrame(found_sources, schema=PARAM_NAMES).sort('Frequency')
@@ -630,11 +630,11 @@ def main():
     # Plot example frequency window
 
     freq_idx = np.searchsorted(
-        np.asarray(pipeline.frequencies)[:, 0], 0.00675
+        np.asarray(pipeline.frequencies)[:, 0], 0.005415
     )
     freq_range = (
         pipeline.frequencies[freq_idx][0],
-        pipeline.frequencies[freq_idx + 1 - 1][1]
+        pipeline.frequencies[freq_idx + 8 - 1][1]
     )
     
     search = GB_Searcher(
@@ -662,8 +662,13 @@ def main():
     matched_injected = jnp.array(dfs['matched_injected'].filter(mask))
     unmatched_found = jnp.array(dfs['unmatched_found'].filter(mask))
     unmatched_injected = jnp.array(dfs['unmatched_injected'].filter(mask))
-
-    pipeline.plot_frequency_window(results, freq_start=0.006746, n_windows=3)
+    injected_filtered = jnp.array(pl.DataFrame(injected_df.filter(mask)))
+    print(unmatched_injected)
+    for i in range(len(injected_filtered)):
+        print(injected_filtered[i])
+        print(search.SNR(injected_filtered[i]))
+    # pipeline.plot_frequency_window(results, freq_start=0.006743, n_windows=5)
+    pipeline.plot_frequency_window(results, freq_start=0.00534, n_windows=10)
     
     return results
 

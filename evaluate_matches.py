@@ -34,7 +34,7 @@ from globalGB.search_utils_GB import GBConfig
 from DataLoader.data_loader import LISADataLoader
 
 from globalGB.search_utils_GB import PARAM_NAMES, PARAM_INDICES, frequency_derivative_mojito_lower, frequency_derivative_mojito_upper
-from globalGB.search_utils_GB import frequency_derivative_tyson_lower, frequency_derivative_tyson_upper, frequency_derivative
+from globalGB.search_utils_GB import frequency_derivative_tyson_lower, frequency_derivative_tyson_upper, frequency_derivative, frequency_derivative_mojito_lower_step
 jax.config.update('jax_default_device', jax.devices('cpu')[0])
 jax.config.update("jax_enable_x64", True)
 
@@ -78,8 +78,8 @@ t_init = 97729089.327664
 fn = config.save_path+'/pGB_injected_' +save_name_injected+'.h5'
 with h5py.File(fn, 'r') as f:
     pGB_injected = f['injected_sources'][:]
-gbo = GBObject.from_jaxgb_params(jnp.array(pGB_injected), t_init=t_init)
-pGB_injected = np.array(gbo.to_jaxgb_array(t0=t0))
+# gbo = GBObject.from_jaxgb_params(jnp.array(pGB_injected), t_init=t_init)
+# pGB_injected = np.array(gbo.to_jaxgb_array(t0=t0))
 pGB_injected_df = pl.DataFrame(pGB_injected, schema=PARAM_NAMES)
 pGB_injected_df = pGB_injected_df.sort('Frequency')
 
@@ -93,12 +93,6 @@ with h5py.File(config.save_path+'/match_results_'+config.data_set+'_SNR_threshol
         found_sources_not_matched = np.array(f['found_sources_unmatched'][:])
         injected_sources_not_matched = np.array(f['injected_sources_unmatched'][:])
         match_values_not_matched = np.array(f['match_values_unmatched'][:])
-
-# mask_match = match_values < 0.3
-# found_sources_matched = found_sources[mask_match]
-# injected_sources_matched = injected_sources[mask_match]
-# found_sources_not_matched = found_sources[~mask_match]
-# injected_sources_not_matched = injected_sources[~mask_match]
 
 number_of_injected_signals = len(pGB_injected)
 number_of_found_signals = len(found_sources_matched) + len(found_sources_not_matched)
@@ -120,7 +114,9 @@ found_sources_not_matched_df = found_sources_not_matched_df.sort(by= 'Frequency'
 
 # remove injected_sources_matched_df signls from pGB_injected_df
 injected_sources_not_matched_df = pl.concat([injected_sources_matched_df, pGB_injected_df])
+print(len(injected_sources_not_matched_df))
 injected_sources_not_matched_df = injected_sources_not_matched_df.unique(keep='none')
+print(len(injected_sources_not_matched_df))
 injected_sources_not_matched = np.array(injected_sources_not_matched_df)
 
 
@@ -159,28 +155,33 @@ else:
     plt.ylabel(labels[parameter_y])    
 plt.legend(markerscale=4, loc = 'upper right')
 plt.grid(True)
-# plt.savefig(SAVEPATH+'/Evaluation/'+parameter_y+save_name+'injected_not_matched_found_matched_found_not_matched'+end_string,dpi=300,bbox_inches='tight')
+# plt.savefig(config.save_path+'/Evaluation/'+parameter_y+save_name+'injected_not_matched_found_matched_found_not_matched'+end_string,dpi=300,bbox_inches='tight')
 plt.show(block=True)
 
-parameters_to_plot = injected_sources_not_matched_df.sort('Frequency')
+parameters_to_plot = found_sources_not_matched_df.sort('Frequency')
 chandrasekhar_limit = 1.4
 M_chirp_upper_boundary = (chandrasekhar_limit**2)**(3/5)/(2*chandrasekhar_limit)**(1/5)
 mask_negative_frequency_derivative = parameters_to_plot[:,PARAM_INDICES['FrequencyDerivative']] < 0
 parameters_to_plot_negative_frequency_derivative = parameters_to_plot.filter(mask_negative_frequency_derivative)
 parameters_to_plot_positive_frequency_derivative = parameters_to_plot.filter(~mask_negative_frequency_derivative)
-plt.figure()
-plt.plot(loader.tdi_fs['freq'],np.abs(frequency_derivative_mojito_lower(loader.tdi_fs['freq'])),'k')
-# plt.plot(loader.tdi_fs['freq'],np.abs(frequency_derivative_tyson_lower(loader.tdi_fs['freq'])),'k:')
+plt.figure(figsize=(10,6))
+plt.plot(loader.tdi_fs['freq'],np.abs(frequency_derivative_mojito_lower_large(loader.tdi_fs['freq'])),'k--', label=r'proposed prior')
+plt.plot(loader.tdi_fs['freq'],np.abs(frequency_derivative_mojito_lower(loader.tdi_fs['freq'])),'k', label=r'reduced prior')
+# plt.plot(loader.tdi_fs['freq'],np.abs(frequency_derivative_tyson_lower(loader.tdi_fs['freq'])),'k:', label='Tyson lower')
 # plt.plot(loader.tdi_fs['freq'],np.abs(frequency_derivative(loader.tdi_fs['freq'], M_chirp_upper_boundary)),'r')
-plt.plot(loader.tdi_fs['freq'],np.abs(frequency_derivative_mojito_upper(loader.tdi_fs['freq'])),'r')
-plt.plot(parameters_to_plot_negative_frequency_derivative[:,PARAM_INDICES['Frequency']],np.abs(parameters_to_plot_negative_frequency_derivative[:,PARAM_INDICES['FrequencyDerivative']]), '+', label = 'Injected not recovered', markersize= markersize, alpha = alpha, zorder = 0)
+# plt.plot(loader.tdi_fs['freq'],np.abs(frequency_derivative_mojito_upper(loader.tdi_fs['freq'])),'r', label='Mojito upper')
+plt.plot(parameters_to_plot_negative_frequency_derivative[:,PARAM_INDICES['Frequency']],np.abs(parameters_to_plot_negative_frequency_derivative[:,PARAM_INDICES['FrequencyDerivative']]), '+', label = 'Recovered not matched', markersize= markersize, alpha = alpha, zorder = 0)
 # plt.plot(parameters_to_plot_positive_frequency_derivative[:,PARAM_INDICES['Frequency']],parameters_to_plot_positive_frequency_derivative[:,PARAM_INDICES['FrequencyDerivative']], 'o', label = 'Injected not recovered', markersize= markersize, alpha = alpha, zorder = 0)
 plt.yscale('log')
 plt.xscale('log')
 plt.xlabel('$f$ (Hz)')
+plt.ylabel('|f\'| (Hz/s)')
 plt.xlim(0.0003,0.03)
 plt.ylim(10**-26,None)
+plt.legend(loc = 'upper left')
+plt.grid(True)
 plt.show(block=True)
+plt.close()
 
 #### plot
 markersize = 3
