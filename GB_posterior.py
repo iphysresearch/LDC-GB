@@ -177,8 +177,6 @@ def main(argv=None):
         # plt.legend()
         # plt.title(f'Group {index_with_most_sources} with most sources')
         # plt.show(block=True)
-        
-        print(f"Processing group {i}/{len(groups_to_process)}")
 
         start_index = batch_index*config.batch_size
         groups_to_process = grouped_found_sources[start_index:start_index+config.batch_size]
@@ -206,7 +204,7 @@ def main(argv=None):
             )
             chains, ensemble = gb_pe.mcmc_GB(nsteps=313, burn=0, ntemps=4, nwalkers=32, nleaves_max=len(initial_parameters)+2)
             
-            chains_fn = savepath + f'/chains/chains_Mojito_SNR_threshold_{int(config.snr_threshold)}_group_{i}_frequency_range_{int(np.round(frequency_range[0]*1e9, 0))}nHz_to_{int(np.round(frequency_range[1]*1e9, 0))}nHz.h5'
+            chains_fn = savepath + f'/chains/chains_Mojito_SNR_threshold_{int(config.snr_threshold)}_group_{i+start_index}_frequency_range_{int(np.round(frequency_range[0]*1e9, 0))}nHz_to_{int(np.round(frequency_range[1]*1e9, 0))}nHz.h5'
             os.makedirs(os.path.dirname(chains_fn), exist_ok=True)
             with h5py.File(chains_fn, 'w') as f:
                 f.create_dataset('chains', data=chains)
