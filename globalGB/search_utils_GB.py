@@ -35,7 +35,9 @@ from eryn.state import State
 from eryn.moves import GaussianMove, StretchMove, CombineMove
 import corner
 import gc
-
+# NumPy 2.0 compatibility: np.in1d was removed, eryn uses it
+if not hasattr(np, 'in1d'):
+    np.in1d = np.isin
 # from ldc.lisa.noise import get_noise_model
 
 from .GB_boundaries import boundaries_dict
@@ -297,7 +299,8 @@ def scaleto01(params, boundaries, parameters=None):
     Returns: array of parameters scaled to [0, 1]
     """
     params = np.atleast_1d(params)
-    if params.ndim == 1:
+    was_1d = params.ndim == 1
+    if was_1d:
         params = params.reshape(1, -1)
     
     # Convert dict boundaries to array if needed
@@ -323,7 +326,7 @@ def scaleto01(params, boundaries, parameters=None):
         
         params01[:, i] = (transformed - lower) / (upper - lower)
     
-    return params01.squeeze()
+    return params01.squeeze() if was_1d else params01
 
 def reduce_boundaries(maxpGB, boundaries, parameters=None, ratio=0.1):
     """Reduces the boundaries of the parameters.
@@ -586,7 +589,6 @@ class GB_Searcher:
         self.SE = np.ones(len(self.dataE))*np.median((np.abs(self.dataE-Ef)/self.dt)**2/(self.fs*self.N_samples)*2)
         self.ST = np.ones(len(self.dataT))*np.median((np.abs(self.dataT-Tf)/self.dt)**2/(self.fs*self.N_samples)*2)
 
-
     def align_waveform_to_data_jax(self, waveform, pGB):
         """Aligns a JAX waveform array to the data frequency grid.
         waveform: JAX array from get_tdi (1D array at specific frequency bins)
@@ -755,6 +757,14 @@ class GB_Searcher:
         pGBs: array of gravitational wave parameters (shape: (n_signals, 8) or (8,))
         """
         dh, hh = self.get_dh_hh(pGBs)
+        logliks = dh - 0.5 * hh
+        return logliks
+
+    def loglikelihood_jax(self, pGBs):
+        """Computes the log-likelihood using JAX.
+        pGBs: array of gravitational wave parameters (shape: (n_signals, 8) or (8,))
+        """
+        dh, hh = self.get_dh_hh_jax(pGBs)
         logliks = dh - 0.5 * hh
         return logliks
 
@@ -1127,8 +1137,6 @@ class GB_Searcher:
         """Computes the log-likelihood from the parameters in range [0,1]
         pGBs01: flat array of parameters in [0,1] (length: n_signals * 8)
         """
-        if boundaries is None:
-            boundaries = self.boundaries_reduced
         pGBs01 = np.asarray(pGBs01)
         # if pGBs01 is not flattened, flatten it
         if pGBs01.ndim != 1:
@@ -1136,6 +1144,8 @@ class GB_Searcher:
         n_signals = len(pGBs01) // N_PARAMS
         pGBs = np.zeros((n_signals, N_PARAMS))
         
+        if boundaries is None:
+            boundaries = np.array([self.boundaries_reduced]*n_signals)
         for signal in range(n_signals):
             pGB01 = pGBs01[signal*N_PARAMS:(signal+1)*N_PARAMS]
             # Clip inclination to [0, 1]
@@ -1145,6 +1155,21 @@ class GB_Searcher:
         p = self.loglikelihood(pGBs)
         return p
 
+    def from01tologlikelihood_jax(self, pGBs01, boundaries=None):
+        """Computes the log-likelihood from the parameters in range [0,1] using JAX
+        pGBs01: flat array of parameters in [0,1] (length: n_signals * 8)
+        """
+        pGBs01 = jnp.asarray(pGBs01)
+        if pGBs01.ndim != 1:
+            pGBs01 = pGBs01.flatten()
+        n_signals = pGBs01.shape[0] // N_PARAMS
+        pGBs = jnp.zeros((n_signals, N_PARAMS))
+        if boundaries is None:
+            boundaries = jnp.asarray([self.boundaries_reduced]*n_signals)
+        for signal in range(n_signals):
+            pGB01 = pGBs01[signal*N_PARAMS:(signal+1)*N_PARAMS]
+            pGBs = pGBs.at[signal].set(scaletooriginal_jax(pGB01, boundaries[signal]))
+        return self.loglikelihood_jax(pGBs)
 
     def from01tologlikelihood_negative(self, pGBs01, boundaries=None):
         """Computes the log-likelihood from the parameters in range [0,1] with the amplitude and switches sign to negative
@@ -1669,12 +1694,11 @@ class GB_pe:
         self.dt = dt
 
 
-    def mcmc_GB(self, nsteps=5000, burn=500, ntemps=4, nwalkers=32, ):
+    def mcmc_GB(self, nsteps=5000, burn=500, ntemps=4, nwalkers=32, nleaves_max=10 ):
         """
         Eryn sampler
         """
         branch_names = ["GB"]
-        nleaves_max = 10
         priors = {
             "GB": ProbDistContainer(
                 {
@@ -1693,6 +1717,11 @@ class GB_pe:
         search = GB_Searcher(self.tdi_fs, self.Tobs, self.lower_frequency, self.upper_frequency, self.waveform_args, dt=self.dt)
         # injected mean
         mean = scaleto01(self.initial_parameters, search.boundaries)
+        
+        # Clip mean to [0, 1] to ensure valid prior (values outside boundaries get clipped)
+        mean = np.clip(mean, 0.001, 0.999)
+        print(f"Initial parameters scaled to [0,1]:\n{mean}")
+        print(f"Min: {mean.min()}, Max: {mean.max()}")
 
         ndim = len(mean[0])
         # define covariance matrix
@@ -1701,73 +1730,86 @@ class GB_pe:
         tempering_kwargs=dict(ntemps=ntemps)
         # random prior draw for initial points, when using real signals, start around true
 
-        coords = {"GB": np.zeros((ntemps, nwalkers, nleaves_max, ndim))*0.5}
+        # Initialize coords to 0.5 (not zeros!) for unused leaves
+        coords = {"GB": np.ones((ntemps, nwalkers, nleaves_max, ndim)) * 0.5}
 
         # this is the sigma for the multivariate Gaussian that sets starting points
         # We need it to be very small to assume we are passed the search phase
         # we will verify this is with likelihood calculations
         sig1 = 10**-10
 
-        # setup initial walkers to be the correct count (it will spread out)
-        for nn in range(nleaves_max):
-            if nn >= len(mean):
-                # not going to add parameters for these unused leaves
-                continue
+        log_prior = np.array([np.nan])
+        log_like = np.array([np.nan])
+        n_tries = 0
+        # while log_prior or log_like contains nan or inf, generate new random points
+        while np.any(np.isnan(log_prior)) or np.any(np.isinf(log_prior)) or \
+              np.any(np.isnan(log_like)) or np.any(np.isinf(log_like)):
+            n_tries += 1
+            if n_tries > 100:
+                raise ValueError("Failed to generate valid initial points after 100 tries")
+            # setup initial walkers to be the correct count (it will spread out)
+            for nn in range(nleaves_max):
+                if nn >= len(mean):
+                    # not going to add parameters for these unused leaves
+                    continue
                 
-            coords["GB"][:, :, nn] = np.random.multivariate_normal(mean[nn], np.diag(np.ones(len(mean[nn])) * sig1), size=(ntemps, nwalkers)) 
+                sampled = np.random.multivariate_normal(mean[nn], np.diag(np.ones(len(mean[nn])) * sig1), size=(ntemps, nwalkers))
+                # Clip to valid prior range [0, 1]
+                coords["GB"][:, :, nn] = np.clip(sampled, 0.001, 0.999) 
 
-        # make sure to start near the proper setup
-        inds = {"GB": np.zeros((ntemps, nwalkers, nleaves_max), dtype=bool)}
+            # make sure to start near the proper setup
+            inds = {"GB": np.zeros((ntemps, nwalkers, nleaves_max), dtype=bool)}
 
-        # turn False -> True for any binary in the sampler
-        inds['GB'][:, :, :len(mean)] = True
+            # turn False -> True for any binary in the sampler
+            inds['GB'][:, :, :len(mean)] = True
 
-        # for the Gaussian Move
-        factor = [10**-9, 10**-6, 10**-6, 10**-6, 10**-6, 10**-6, 10**-6, 10**-6]
-        cov = {"GB": np.diag(np.ones(ndim)) * factor}
+            # for the Gaussian Move
+            factor = [10**-9, 10**-6, 10**-6, 10**-6, 10**-6, 10**-6, 10**-6, 10**-6]
+            cov = {"GB": np.diag(np.ones(ndim)) * factor}
 
-        moves = GaussianMove(cov)
-
-
-        function_to_maximize = search.from01tologlikelihood
-            
-        # ensemble = EnsembleSampler(
-        #     nwalkers,
-        #     {"GB": ndim},
-        #     function_to_maximize,
-        #     priors,
-        #     nleaves_max=nleaves_max,
-        #     branch_names=["GB"],
-        #     nbranches=1,
-        #     tempering_kwargs=tempering_kwargs,
-        # )
-
-        ensemble = EnsembleSampler(
-            nwalkers,
-            ndim,  
-            function_to_maximize,
-            priors,
-            tempering_kwargs=dict(ntemps=ntemps),
-            nbranches=len(branch_names),
-            branch_names=branch_names,
-            nleaves_max=nleaves_max,
-            nleaves_min=0,
-            moves=moves,
-            rj_moves=True,  # basic generation of new leaves from the prior
-        )
+            moves = GaussianMove(cov)
 
 
-        # print('initial points', initial_points)
-        print(mean, 'loglikelihood', function_to_maximize(np.array([mean[0]])))
-        print(mean, 'loglikelihood', function_to_maximize(np.array([mean[1]])))
-        print(mean, 'loglikelihood', function_to_maximize(mean))
-        # print( initial_points[0,0,0], 'loglikelihood', function_to_maximize(initial_points[0,0,0]))
-        # always check likelihood and prior values
-        log_prior = ensemble.compute_log_prior(coords, inds=inds)
-        log_like = ensemble.compute_log_like(coords, inds=inds, logp=log_prior)[0]
+            function_to_sample = search.from01tologlikelihood
+                
+            # ensemble = EnsembleSampler(
+            #     nwalkers,
+            #     {"GB": ndim},
+            #     function_to_sample,
+            #     priors,
+            #     nleaves_max=nleaves_max,
+            #     branch_names=["GB"],
+            #     nbranches=1,
+            #     tempering_kwargs=tempering_kwargs,
+            # )
+
+            ensemble = EnsembleSampler(
+                nwalkers,
+                ndim,  
+                function_to_sample,
+                priors,
+                tempering_kwargs=dict(ntemps=ntemps),
+                nbranches=len(branch_names),
+                branch_names=branch_names,
+                nleaves_max=nleaves_max,
+                nleaves_min=0,
+                moves=moves,
+                rj_moves=True,  # basic generation of new leaves from the prior
+            )
+
+
+            # print('initial points', initial_points)
+            # print(mean, 'loglikelihood', function_to_sample(np.array([mean[0]])))
+            # print(mean, 'loglikelihood', function_to_sample(np.array([mean[1]])))
+            print(mean, 'loglikelihood', function_to_sample(mean))
+            # print( initial_points[0,0,0], 'loglikelihood', function_to_sample(initial_points[0,0,0]))
+            # always check likelihood and prior values
+            log_prior = ensemble.compute_log_prior(coords, inds=inds)
+            log_like = ensemble.compute_log_like(coords, inds=inds, logp=log_prior)[0]
 
         # make sure it is reasonably close to the maximum
         # will not be zero due to noise
+        print(f"Number of tries: {n_tries}")
         print("Log-likelihood:\n", log_like)
         print("\nLog-prior:\n", log_prior)
                 
@@ -1789,7 +1831,5 @@ class GB_pe:
 
         chains = np.array(self.chains_sample)
 
-        fig = corner.corner(chains[:,0,:], labels=PARAM_NAMES)
-        plt.show(block=True)
 
         return chains, ensemble
