@@ -1801,7 +1801,7 @@ class GB_pe:
             # print('initial points', initial_points)
             # print(mean, 'loglikelihood', function_to_sample(np.array([mean[0]])))
             # print(mean, 'loglikelihood', function_to_sample(np.array([mean[1]])))
-            print(mean, 'loglikelihood', function_to_sample(mean))
+            # print(mean, 'loglikelihood', function_to_sample(mean))
             # print( initial_points[0,0,0], 'loglikelihood', function_to_sample(initial_points[0,0,0]))
             # always check likelihood and prior values
             log_prior = ensemble.compute_log_prior(coords, inds=inds)
