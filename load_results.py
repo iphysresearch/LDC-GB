@@ -7,7 +7,8 @@ import matplotlib.pyplot as plt
 PARAM_NAMES = ['Frequency', 'FrequencyDerivative', 'Amplitude', 'RightAscension', 'Declination', 'Polarization', 'Inclination', 'InitialPhase']
 
 # Load recovered/found sources and their matched injected counterparts.
-found_sources_fn = '/path/to/found_signals/found_signals_Mojito_SNR_threshold_9_seed1.h5'
+# found_sources_fn = '/home/stefan/LDC/Mojito/found_signals/GB/found_sources_Mojito_SNR_threshold_9_seed1_overlap.h5'
+found_sources_fn = '/path/to/found_signals/found_sources_Mojito_SNR_threshold_9_seed1_overlap.h5'
 with h5py.File(found_sources_fn, 'r') as f:
     found_sources = f['found_sources'][:]
     injected_sources = f['injected_sources'][:]

@@ -178,6 +178,32 @@ specifically).
 - Final results:
   - `save_path/match_results_<save_name>_<match_criteria>.h5`
 
+
+## 4) Posterior sampling (per overlapping group)
+
+`GB_posterior.py` takes the recovered sources, **groups them by overlapping “significant” frequency support**, and then runs an RJMCMC posterior (`eryn`) **per group**. This is useful when multiple recovered sources overlap strongly in frequency and should be sampled jointly.
+
+- **Grouping logic**: for each recovered source, compute the frequency interval where \(|h(f)|\) exceeds a fraction of its maximum (currently 10%). Sources whose intervals overlap are merged into the same group (the group range is the union of member ranges).
+- **Batching**: the `batch_index` argument selects which subset of groups to process (controlled by `batch_size` in `globalGB/GB_search_config.json`).
+
+### Outputs
+
+Files are written under the runner’s `savepath` taken from GB_search_config.json (typically something like `.../Mojito/found_signals/GB/`):
+
+- **Grouped sources file**: `grouped_found_sources_Mojito_SNR_threshold_<SNR>_seed<SEED>.h5`
+  - Contains `group_0`, `group_1`, … each with:
+    - `frequency_range` (dataset, 2 floats)
+    - `sources` (dataset, shape `(n_sources, 8)` in `PARAM_NAMES` order)
+- **Chain files** (one per processed group):
+  - `chains/chains_Mojito_SNR_threshold_<SNR>_group_<IDX>_frequency_range_<MIN>nHz_to_<MAX>nHz.h5`
+  - Datasets: `chains`, `initial_parameters`
+  - Attributes: `frequency_range_min`, `frequency_range_max`, `time_taken`
+
+### Loading / plotting chains
+
+`load_results.py` shows how to open a chain file, split by “leaf” (RJMCMC can have inactive leaves), drop all-NaN samples, and plot with `corner`.
+
+
 ## End-to-end example
 
 From the repository root, with `globalGB/GB_search_config.json` pointing to the
@@ -219,4 +245,8 @@ python merge_GB_signal_files.py global
 ```bash
 python match_GBs.py
 ```
-7) TODO: get posterior
+7) get posterior
+
+```bash
+python GB_posterior.py even 150 # which run does not matter here. 150 is the batch index
+```
