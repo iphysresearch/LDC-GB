@@ -585,9 +585,9 @@ class GB_Searcher:
             Ef = 0
             Tf = 0
         
-        self.SA = np.ones(len(self.dataA))*np.median((np.abs(self.dataA-Af)/self.dt)**2/(self.fs*self.N_samples)*2)
-        self.SE = np.ones(len(self.dataE))*np.median((np.abs(self.dataE-Ef)/self.dt)**2/(self.fs*self.N_samples)*2)
-        self.ST = np.ones(len(self.dataT))*np.median((np.abs(self.dataT-Tf)/self.dt)**2/(self.fs*self.N_samples)*2)
+        self.SA = np.median((np.abs(self.dataA-Af)/self.dt)**2/(self.fs*self.N_samples)*2)
+        self.SE = np.median((np.abs(self.dataE-Ef)/self.dt)**2/(self.fs*self.N_samples)*2)
+        self.ST = np.median((np.abs(self.dataT-Tf)/self.dt)**2/(self.fs*self.N_samples)*2)
 
     def align_waveform_to_data_jax(self, waveform, pGB):
         """Aligns a JAX waveform array to the data frequency grid.
