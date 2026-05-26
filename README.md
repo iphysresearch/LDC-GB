@@ -11,7 +11,6 @@ conda activate global_gb
 
 ```
 pip install -r requirements.txt
-uv pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ mojito-processor
 ```
 
 ## How to run

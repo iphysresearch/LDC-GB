@@ -9,7 +9,8 @@ import os
 from copy import deepcopy
 from ldc.common.series import TimeSeries, FrequencySeries, TDI
 from ldc.common.tools import window
-from MojitoProcessor import load_mojito_l1, process_pipeline
+from MojitoProcessor import process_pipeline
+from mojito import MojitoL1File
 from globalGB.search_utils_GB import GBConfig
 
 
@@ -206,8 +207,70 @@ class LISADataLoader:
         else:
             self.channel_combination = channel_combination
         
-        data = load_mojito_l1(data_path)
-        self.Tobs_original = float(data.duration)
+        load_days = None
+        with MojitoL1File(data_path) as f:
+            tdi_sampling = f.tdis.time_sampling
+            ltt_sampling = f.ltts.time_sampling
+            orbit_sampling = f.orbits.time_sampling
+
+            # Consistent sample counts across all data streams
+            n_tdi = int(load_days * 86400 * tdi_sampling.fs) if load_days else tdi_sampling.size
+            n_ltt = int(load_days * 86400 * ltt_sampling.fs) if load_days else ltt_sampling.size
+            n_orbit = (
+                int(load_days * 86400 * orbit_sampling.fs) if load_days else orbit_sampling.size
+            )
+
+            data = {
+                # ── TDI observables ──────────────────────────────────────────────────
+                "tdis": {
+                    "X": f.tdis.x2[:n_tdi],
+                    "Y": f.tdis.y2[:n_tdi],
+                    "Z": f.tdis.z2[:n_tdi],
+                    "A": f.tdis.a2[:n_tdi],
+                    "E": f.tdis.e2[:n_tdi],
+                    "T": f.tdis.t2[:n_tdi],
+                },
+                "fs": tdi_sampling.fs,
+                "dt": tdi_sampling.dt,
+                "t_tdi": tdi_sampling.t()[:n_tdi],
+                # ── Light travel times ───────────────────────────────────────────────
+                "ltts": {
+                    "12": f.ltts.ltt_12[:n_ltt],
+                    "13": f.ltts.ltt_13[:n_ltt],
+                    "21": f.ltts.ltt_21[:n_ltt],
+                    "23": f.ltts.ltt_23[:n_ltt],
+                    "31": f.ltts.ltt_31[:n_ltt],
+                    "32": f.ltts.ltt_32[:n_ltt],
+                },
+                "ltt_derivatives": {
+                    "12": f.ltts.ltt_derivative_12[:n_ltt],
+                    "13": f.ltts.ltt_derivative_13[:n_ltt],
+                    "21": f.ltts.ltt_derivative_21[:n_ltt],
+                    "23": f.ltts.ltt_derivative_23[:n_ltt],
+                    "31": f.ltts.ltt_derivative_31[:n_ltt],
+                    "32": f.ltts.ltt_derivative_32[:n_ltt],
+                },
+                "ltt_times": ltt_sampling.t()[:n_ltt],
+                # ── Spacecraft orbits ────────────────────────────────────────────────
+                "orbits": f.orbits.positions[:n_orbit],  # (n_orbit, 3, 3)
+                "velocities": f.orbits.velocities[:n_orbit],  # (n_orbit, 3, 3)
+                "orbit_times": orbit_sampling.t()[:n_orbit],
+                # ── Noise estimates (frequency-domain, not truncated) ────────────────
+                "noise_estimates": {
+                    "xyz": f.noise_estimates.xyz[:],
+                    "aet": f.noise_estimates.aet[:],
+                    "freqs": f.noise_estimates.freq_sampling.f(),
+                },
+                # ── Metadata ─────────────────────────────────────────────────────────
+                "metadata": {
+                    "laser_frequency": f.laser_frequency,
+                    "pipeline_name": f.pipeline_names,
+                },
+            }
+
+        n_samples = len(data["tdis"]["X"])
+        duration = n_samples * data["dt"]
+        self.Tobs_original = float(duration)
         # ── Pipeline parameters ───────────────────────────────────────────────────────
 
         # Downsampling parameters
@@ -226,7 +289,7 @@ class LISADataLoader:
             "order": 2,  # Butterworth filter order
         }
 
-        Nyquist_data = 1/(2*data.dt)
+        Nyquist_data = 1/(2*data["dt"])
         if filter_kwargs['lowpass_cutoff'] == Nyquist_data:
             filter_kwargs['lowpass_cutoff'] = None
 
@@ -258,25 +321,26 @@ class LISADataLoader:
         )
 
         td = processed_segments["segment0"]
+        print (td)
+        print (td.data.keys())
+        print (td.dt, td.fs)
+        print (td.t0)
         
 
-        
 
         # Convert from frequency to fractional frequency
-        self.CENTRAL_FREQ = data.metadata["laser_frequency"]
+        self.CENTRAL_FREQ = data["metadata"]["laser_frequency"]
 
         self.freq = np.fft.rfftfreq(td.N, d=td.dt)
         self.tdi_ts = {ch: td.data[ch] for ch in td.channels}
         # self.tdi_ts = {ch: TimeSeries(td.data[ch], dt=td.dt, t0=data.t0) for ch in td.channels}
-        self.tdi_fs = {ch: np.fft.rfft(td.data[ch])*td.dt / self.CENTRAL_FREQ for ch in td.channels}
+        self.tdi_fs = {ch: np.fft.rfft(td.data[ch])*td.dt  for ch in td.channels}
         self.tdi_fs['freq'] = self.freq
 
         self.Tobs = float(len(td.data[self.channel_combination[-1]])) * td.dt # Tobs after trimming
-        trim_time = (self.Tobs_original - self.Tobs)/2 # Time to trim from the start
-        self.t0 = data.t0 + trim_time # Start time after trimming
+        self.t0 = td.t0 # Start time after trimming
 
 
-        
     
     def _load_mojito_catalog(self):
         """Load Mojito MBHB and WDWD catalogs"""

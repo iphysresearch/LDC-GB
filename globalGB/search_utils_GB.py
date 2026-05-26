@@ -170,15 +170,6 @@ def frequency_derivative_mojito_lower_reduced(f):
 def frequency_derivative_mojito_upper(f):
     return 3*10**-21*(f/0.0001)**(11/3)
 
-def frequency_derivative_mojito_lower_step(f):
-    mask = f < 0.005
-    f_low = f[mask]
-    f_high = f[~mask]
-    f_dot_low = frequency_derivative_mojito_lower(f_low)/10
-    f_dot_high = frequency_derivative_mojito_lower(f_high)
-    f_dot = np.concatenate([f_dot_low, f_dot_high])
-    return f_dot
-
 
 def scaletooriginal(previous_max, boundaries, parameters=None):
     """Scales the parameters back to their original values.
@@ -328,6 +319,67 @@ def scaleto01(params, boundaries, parameters=None):
     
     return params01.squeeze() if was_1d else params01
 
+
+def physical_proposal_std_to_01(center_01, sigma_physical_by_index, boundaries):
+    """Map absolute proposal std (physical units) to std in [0, 1].
+
+    Uses ``scaletooriginal`` / ``scaleto01`` so the mapping matches the MCMC
+    parameterization (linear for Frequency and FrequencyDerivative).
+    """
+    center_phys = scaletooriginal(np.atleast_1d(center_01), boundaries)
+    center_phys = np.atleast_2d(center_phys)
+    center_01_from_phys = np.atleast_2d(scaleto01(center_phys, boundaries))
+
+    sigma_01 = np.zeros(center_01_from_phys.shape[1])
+    for i, sigma_phys in sigma_physical_by_index.items():
+        perturbed = center_phys.copy()
+        perturbed[:, i] += sigma_phys
+        perturbed_01 = np.atleast_2d(scaleto01(perturbed, boundaries))
+        sigma_01[i] = np.abs(perturbed_01[0, i] - center_01_from_phys[0, i])
+    return sigma_01
+
+
+def gaussian_move_factor_GB(search, center_01, default_factor=None):
+    """Diagonal GaussianMove variances in [0, 1] for GB parameters.
+
+    Frequency and frequency-derivative steps are set from absolute physical scales
+    at the current mode (Doppler smearing and Mojito fdot envelope), then
+    converted with ``scaletooriginal`` / ``scaleto01``.
+    """
+    if default_factor is None:
+        default_factor = np.array(
+            [10**-9, 10**-6, 10**-6, 10**-6, 10**-6, 10**-6, 10**-6, 10**-6]
+        )
+    center_phys = scaletooriginal(np.atleast_1d(center_01), search.boundaries)
+    f0 = float(center_phys[PARAM_INDICES["Frequency"]])
+
+    sigma_f_hz = 1e-10  # f_smear from max_signal_bandwidth
+    fd_scale = max(
+        abs(frequency_derivative_mojito_lower_reduced(f0)),
+        frequency_derivative_mojito_upper(f0),
+    )
+    sigma_fdot = 1e-17
+
+    sigma_physical = {
+        PARAM_INDICES["Frequency"]: sigma_f_hz,
+        PARAM_INDICES["FrequencyDerivative"]: sigma_fdot,
+    }
+    sigma_01 = physical_proposal_std_to_01(center_01, sigma_physical, search.boundaries)
+
+    factor = np.array(default_factor, dtype=float)
+    for idx in sigma_physical:
+        factor[idx] = sigma_01[idx] ** 2
+
+    print(
+        f"Gaussian move: sigma_f={sigma_f_hz:.3e} Hz, sigma_fdot={sigma_fdot:.3e} -> "
+        f"sigma_01=({sigma_01[PARAM_INDICES['Frequency']]:.3e}, "
+        f"{sigma_01[PARAM_INDICES['FrequencyDerivative']]:.3e}), "
+        f"factor=({factor[PARAM_INDICES['Frequency']]:.3e}, "
+        f"{factor[PARAM_INDICES['FrequencyDerivative']]:.3e})"
+    )
+    return factor
+
+
 def reduce_boundaries(maxpGB, boundaries, parameters=None, ratio=0.1):
     """Reduces the boundaries of the parameters.
     maxpGB: array of parameter values (shape: (8,))
@@ -370,7 +422,7 @@ def max_signal_bandwidth(frequency, Tobs, chandrasekhar_limit=1.4):
     """
     M_chirp_upper_boundary = (chandrasekhar_limit**2)**(3/5)/(2*chandrasekhar_limit)**(1/5)
     f_smear = frequency *2* 10**-4
-    max_frequency_derivative = max(np.abs(frequency_derivative_mojito_lower(frequency)), np.abs(frequency_derivative_mojito_upper(frequency)))
+    max_frequency_derivative = max(np.abs(frequency_derivative_mojito_lower_reduced(frequency)), np.abs(frequency_derivative_mojito_upper(frequency)))
     f_deviation = max_frequency_derivative*Tobs
     # window_length = np.max([f_smear, f_deviation])
     window_length = f_smear + f_deviation
@@ -535,7 +587,7 @@ class GB_Searcher:
         # snr = 1000
         # amplitude_upper = 2*snr/(Tobs * np.sin(f_0/ f_transfer)**2/self.SA[0])**0.5
         # amplitude = [amplitude_lower, amplitude_upper]
-        fd_range = [frequency_derivative_mojito_lower(lower_frequency),frequency_derivative_mojito_upper(upper_frequency)]
+        fd_range = [frequency_derivative_mojito_lower_reduced(lower_frequency),frequency_derivative_mojito_upper(upper_frequency)]
 
         self.boundaries = deepcopy(boundaries_dict)
         if 'Frequency' not in self.boundaries.keys():
@@ -1694,7 +1746,7 @@ class GB_pe:
         self.dt = dt
 
 
-    def mcmc_GB(self, nsteps=5000, burn=500, ntemps=4, nwalkers=32, nleaves_max=10 ):
+    def eryn_mcmc_GB(self, nsteps=5000, burn=500, ntemps=4, nwalkers=32, nleaves_max=10 ):
         """
         Eryn sampler
         """
@@ -1762,10 +1814,13 @@ class GB_pe:
 
             # turn False -> True for any binary in the sampler
             inds['GB'][:, :, :len(mean)] = True
-
-            # for the Gaussian Move
-            factor = [10**-9, 10**-6, 10**-6, 10**-6, 10**-6, 10**-6, 10**-6, 10**-6]
-            cov = {"GB": np.diag(np.ones(ndim)) * factor}
+            
+            # # factor = [10**-6, 10**-6, 10**-4, 10**-5, 10**-3, 10**-3, 10**-3, 10**-3]
+            # factor = [10**-9, 10**-6, 10**-6, 10**-6, 10**-6, 10**-6, 10**-6, 10**-6]
+            # for the Gaussian Move: freq / fdot steps from physical scales via scaletooriginal/scaleto01
+            factor = gaussian_move_factor_GB(search, mean[0])
+            cov = {"GB": np.diag(factor)}
+            print(f"Gaussian move factor: {factor}")
 
             moves = GaussianMove(cov)
 
@@ -1817,7 +1872,8 @@ class GB_pe:
         state = State(coords, log_like=log_like, log_prior=log_prior, inds=inds)
 
         thin_by = 1
-        ensemble.run_mcmc(state, nsteps, progress=True, burn=burn, thin_by=thin_by)
+        kwargs = dict(progress=True, burn=burn, thin_by=thin_by)
+        ensemble.run_mcmc(state, nsteps, **kwargs)
 
         chain = ensemble.get_chain(discard=0, thin=1)["GB"][:, 0]
         self.chains_sample = []
@@ -1833,3 +1889,396 @@ class GB_pe:
 
 
         return chains, ensemble
+
+    def MH_mcmc_GB(self, nsteps=5000, burn=500, ntemps=4, nwalkers=32):
+        """
+        Parallel-tempered Metropolis-Hastings MCMC for GB parameter estimation.
+
+        Operates in the unit-cube [0,1] parameter space and uses
+        ``GB_Searcher.from01tologlikelihood`` for likelihood evaluation.
+        Includes adaptive proposal scaling during burn-in and temperature
+        ladder swaps between adjacent chains.
+
+        Parameters
+        ----------
+        nsteps : int
+            Number of post-burn-in iterations to record.
+        burn : int
+            Number of burn-in iterations (discarded, used for adaptation).
+        ntemps : int
+            Number of parallel-tempering temperatures.
+        nwalkers : int
+            Number of independent walkers per temperature level.
+
+        Returns
+        -------
+        chains : np.ndarray
+            Shape ``(nwalkers, nsteps, n_signals, N_PARAMS)`` in physical
+            parameter space (cold chain only, temp index 0).
+        acceptance_fraction : np.ndarray
+            Shape ``(ntemps, nwalkers)`` — fraction of accepted proposals.
+        """
+        search = GB_Searcher(
+            self.tdi_fs, self.Tobs,
+            self.lower_frequency, self.upper_frequency,
+            self.waveform_args, dt=self.dt,
+        )
+
+        initial_params = np.atleast_2d(self.initial_parameters)
+        n_signals = len(initial_params)
+        ndim = n_signals * N_PARAMS
+
+        mean_01 = scaleto01(initial_params, search.boundaries)
+        mean_01 = np.clip(mean_01, 0.001, 0.999).flatten()
+
+        betas = np.geomspace(1.0, 1e-3, ntemps)
+
+        factor = [10**-6, 10**-6, 10**-4, 10**-5, 10**-3, 10**-3, 10**-3, 10**-3]
+        proposal_sigma = np.full(ndim, 1) * factor
+        target_accept = 0.234
+
+        # Initialise walkers: small Gaussian ball around the mode
+        current_pos = np.empty((ntemps, nwalkers, ndim))
+        for t in range(ntemps):
+            for w in range(nwalkers):
+                current_pos[t, w] = np.clip(
+                    mean_01 + np.random.randn(ndim) * 1e-6, 0.001, 0.999
+                )
+
+        current_loglike = np.empty((ntemps, nwalkers))
+        for t in range(ntemps):
+            for w in range(nwalkers):
+                current_loglike[t, w] = search.from01tologlikelihood(current_pos[t, w])
+
+        n_accepted = np.zeros((ntemps, nwalkers), dtype=int)
+        n_proposed = np.zeros((ntemps, nwalkers), dtype=int)
+
+        total_steps = burn + nsteps
+        chains = np.empty((ntemps, nwalkers, nsteps, ndim))
+        chain_idx = 0
+
+        for step in range(total_steps):
+            # --- MH proposal and accept/reject ---
+            for t in range(ntemps):
+                for w in range(nwalkers):
+                    proposal = current_pos[t, w] + np.random.randn(ndim) * proposal_sigma
+                    proposal = np.clip(proposal, 0.0, 1.0)
+
+                    prop_loglike = search.from01tologlikelihood(proposal)
+                    log_alpha = betas[t] * (prop_loglike - current_loglike[t, w])
+
+                    if np.log(np.random.rand()) < log_alpha:
+                        current_pos[t, w] = proposal
+                        current_loglike[t, w] = prop_loglike
+                        n_accepted[t, w] += 1
+                    n_proposed[t, w] += 1
+
+            # --- Temperature swaps (adjacent pairs, random order) ---
+            if ntemps > 1:
+                for t in np.random.permutation(ntemps - 1):
+                    w_a = np.random.randint(nwalkers)
+                    w_b = np.random.randint(nwalkers)
+                    log_swap = (betas[t] - betas[t + 1]) * (
+                        current_loglike[t + 1, w_b] - current_loglike[t, w_a]
+                    )
+                    if np.log(np.random.rand()) < log_swap:
+                        current_pos[t, w_a], current_pos[t + 1, w_b] = (
+                            current_pos[t + 1, w_b].copy(),
+                            current_pos[t, w_a].copy(),
+                        )
+                        current_loglike[t, w_a], current_loglike[t + 1, w_b] = (
+                            current_loglike[t + 1, w_b],
+                            current_loglike[t, w_a],
+                        )
+
+            # --- Adapt proposal scale during burn-in ---
+            if step < burn and step > 0 and step % 50 == 0:
+                frac = n_accepted / np.maximum(n_proposed, 1)
+                mean_frac = frac.mean()
+                if mean_frac > target_accept:
+                    proposal_sigma *= 1.2
+                else:
+                    proposal_sigma *= 0.8
+                n_accepted[:] = 0
+                n_proposed[:] = 0
+                print(f"Proposal sigma: {proposal_sigma}")
+
+            # --- Store post-burn-in samples ---
+            if step >= burn:
+                chains[:, :, chain_idx, :] = current_pos
+                chain_idx += 1
+
+            if step % 500 == 0:
+                frac = n_accepted / np.maximum(n_proposed, 1)
+                print(
+                    f"Step {step}/{total_steps}  "
+                    f"accept={frac[0].mean():.3f} (cold)  "
+                    f"logL_max={current_loglike[0].max():.2f}"
+                )
+
+        acceptance_fraction = n_accepted / np.maximum(n_proposed, 1)
+
+        # Convert cold chain from [0,1] to physical parameters
+        cold_chains = chains[0]  # (nwalkers, nsteps, ndim)
+        chains_physical = np.empty((nwalkers, nsteps, n_signals, N_PARAMS))
+        for w in range(nwalkers):
+            for s in range(nsteps):
+                params_01 = cold_chains[w, s].reshape(n_signals, N_PARAMS)
+                for sig in range(n_signals):
+                    chains_physical[w, s, sig] = scaletooriginal(
+                        params_01[sig], search.boundaries
+                    )
+
+        return chains_physical, acceptance_fraction
+
+    def RJMCMC_GB(self, nsteps=5000, burn=500, ntemps=4, nwalkers=32,
+                  n_max=10, birth_weight=0.1, death_weight=0.1):
+        """
+        Reversible-Jump MCMC for trans-dimensional GB parameter estimation.
+
+        Allows the number of active signals to vary between 0 and ``n_max``.
+        At each iteration one of three move types is selected:
+
+        - **Within-model** (probability ``1 - birth_weight - death_weight``):
+          perturb the parameters of all active signals via Gaussian proposals.
+        - **Birth** (probability ``birth_weight``): propose adding a new signal
+          with parameters drawn from the unit-cube prior.
+        - **Death** (probability ``death_weight``): propose removing a randomly
+          selected active signal.
+
+        Includes parallel tempering with ``ntemps`` temperature levels and
+        adaptive proposal scaling during burn-in.
+
+        Parameters
+        ----------
+        nsteps : int
+            Number of post-burn-in iterations to record.
+        burn : int
+            Number of burn-in iterations (discarded, used for adaptation).
+        ntemps : int
+            Number of parallel-tempering temperatures.
+        nwalkers : int
+            Number of independent walkers per temperature level.
+        n_max : int
+            Maximum number of signals allowed in the model.
+        birth_weight : float
+            Probability of proposing a birth move.
+        death_weight : float
+            Probability of proposing a death move.
+
+        Returns
+        -------
+        chains : list of np.ndarray
+            Length-``nsteps`` list. Each element is a 2-D array of shape
+            ``(k, N_PARAMS)`` in physical parameter space, where ``k`` is the
+            number of active signals at that step (cold chain, walker 0).
+        n_signals_chain : np.ndarray
+            Shape ``(nwalkers, nsteps)`` — number of active signals per step
+            for the cold chain.
+        acceptance_stats : dict
+            Per-move-type acceptance counts.
+        """
+        search = GB_Searcher(
+            self.tdi_fs, self.Tobs,
+            self.lower_frequency, self.upper_frequency,
+            self.waveform_args, dt=self.dt,
+        )
+
+        initial_params = np.atleast_2d(self.initial_parameters)
+        n_init = len(initial_params)
+
+        mean_01 = scaleto01(initial_params, search.boundaries)
+        mean_01 = np.clip(mean_01, 0.001, 0.999)
+
+        betas = np.geomspace(1.0, 1e-3, ntemps)
+        within_weight = 1.0 - birth_weight - death_weight
+
+        factor = [10**-6, 10**-6, 10**-4, 10**-5, 10**-3, 10**-3, 10**-3, 10**-3]
+        # factor = [10**-9, 10**-9, 10**-6, 10**-6, 10**-6, 10**-6, 10**-6, 10**-6]
+        # factor = gaussian_move_factor_GB(search, mean_01[0])
+        proposal_sigma = np.full(N_PARAMS, 1) * factor
+        print(f"Proposal sigma: {proposal_sigma}")
+
+        target_accept = 0.234
+
+        # State: each walker holds a variable-length list of signal params
+        # current_signals[t][w] = np.ndarray of shape (k, N_PARAMS) in [0,1]
+        current_signals = [[None] * nwalkers for _ in range(ntemps)]
+        current_loglike = np.empty((ntemps, nwalkers))
+
+        for t in range(ntemps):
+            for w in range(nwalkers):
+                init = np.clip(
+                    mean_01 + np.random.randn(n_init, N_PARAMS) * 1e-6,
+                    0.001, 0.999,
+                )
+                current_signals[t][w] = init.copy()
+                current_loglike[t, w] = search.from01tologlikelihood(init.flatten())
+
+        # Acceptance counters
+        stats = {
+            'within_accept': 0, 'within_total': 0,
+            'birth_accept': 0, 'birth_total': 0,
+            'death_accept': 0, 'death_total': 0,
+        }
+        adapt_accepted = np.zeros(N_PARAMS)
+        adapt_proposed = np.zeros(N_PARAMS)
+
+        total_steps = burn + nsteps
+        # Fixed-shape output: (nwalkers, nsteps, n_max, N_PARAMS), NaN for empty leaves
+        chains = np.full((nwalkers, nsteps, n_max, N_PARAMS), np.nan)
+        n_signals_chain = np.empty((nwalkers, nsteps), dtype=int)
+
+        for step in range(total_steps):
+            for t in range(ntemps):
+                for w in range(nwalkers):
+                    k = len(current_signals[t][w])
+
+                    # Choose move type
+                    u = np.random.rand()
+                    if u < birth_weight:
+                        move = 'birth'
+                    elif u < birth_weight + death_weight:
+                        move = 'death'
+                    else:
+                        move = 'within'
+
+                    if move == 'birth' and k >= n_max:
+                        move = 'within'
+                    if move == 'death' and k <= 0:
+                        move = 'birth' if k < n_max else 'within'
+
+                    if move == 'within':
+                        if k == 0:
+                            continue
+                        stats['within_total'] += 1
+                        proposal = current_signals[t][w].copy()
+                        temp_scale = 1.0 / np.sqrt(betas[t])
+                        for d in range(N_PARAMS):
+                            proposal[:, d] += np.random.randn(k) * proposal_sigma[d] * temp_scale
+                        proposal = np.clip(proposal, 0.0, 1.0)
+
+                        prop_loglike = search.from01tologlikelihood(proposal.flatten())
+                        log_alpha = betas[t] * (prop_loglike - current_loglike[t, w])
+
+                        if np.log(np.random.rand()) < log_alpha:
+                            current_signals[t][w] = proposal
+                            current_loglike[t, w] = prop_loglike
+                            stats['within_accept'] += 1
+                            if t == 0:
+                                adapt_accepted += 1
+                        if t == 0:
+                            adapt_proposed += 1
+
+                    elif move == 'birth':
+                        stats['birth_total'] += 1
+                        new_signal = np.random.rand(1, N_PARAMS)
+
+                        if k > 0:
+                            proposed = np.vstack([current_signals[t][w], new_signal])
+                        else:
+                            proposed = new_signal.copy()
+
+                        prop_loglike = search.from01tologlikelihood(proposed.flatten())
+
+                        # RJ acceptance: prior ratio = 1 (uniform on [0,1]^d),
+                        # proposal ratio = 1/(k+1) for death / 1 for birth from prior
+                        # -> log(proposal ratio) = log(1/(k+1)) - log(1/k)
+                        # = log(k) - log(k+1) for the reverse (death) move
+                        # Full Green ratio: likelihood * prior * |J| * proposal
+                        # birth from prior: q(birth->death)/q(death->birth)
+                        # = (1/(k+1)) / (birth_weight * 1) * death_weight
+                        log_proposal_ratio = (
+                            np.log(death_weight) - np.log(birth_weight)
+                            + np.log(1.0) - np.log(k + 1)
+                        )
+                        log_alpha = (
+                            betas[t] * (prop_loglike - current_loglike[t, w])
+                            + log_proposal_ratio
+                        )
+
+                        if np.log(np.random.rand()) < log_alpha:
+                            current_signals[t][w] = proposed
+                            current_loglike[t, w] = prop_loglike
+                            stats['birth_accept'] += 1
+
+                    elif move == 'death':
+                        stats['death_total'] += 1
+                        idx_remove = np.random.randint(k)
+
+                        proposed = np.delete(current_signals[t][w], idx_remove, axis=0)
+                        if len(proposed) > 0:
+                            prop_loglike = search.from01tologlikelihood(proposed.flatten())
+                        else:
+                            prop_loglike = 0.0
+
+                        log_proposal_ratio = (
+                            np.log(birth_weight) - np.log(death_weight)
+                            + np.log(k) - np.log(1.0)
+                        )
+                        log_alpha = (
+                            betas[t] * (prop_loglike - current_loglike[t, w])
+                            + log_proposal_ratio
+                        )
+
+                        if np.log(np.random.rand()) < log_alpha:
+                            current_signals[t][w] = proposed
+                            current_loglike[t, w] = prop_loglike
+                            stats['death_accept'] += 1
+
+            # --- Temperature swaps ---
+            if ntemps > 1:
+                for t in np.random.permutation(ntemps - 1):
+                    w_a = np.random.randint(nwalkers)
+                    w_b = np.random.randint(nwalkers)
+                    log_swap = (betas[t] - betas[t + 1]) * (
+                        current_loglike[t + 1, w_b] - current_loglike[t, w_a]
+                    )
+                    if np.log(np.random.rand()) < log_swap:
+                        current_signals[t][w_a], current_signals[t + 1][w_b] = (
+                            current_signals[t + 1][w_b],
+                            current_signals[t][w_a],
+                        )
+                        current_loglike[t, w_a], current_loglike[t + 1, w_b] = (
+                            current_loglike[t + 1, w_b],
+                            current_loglike[t, w_a],
+                        )
+
+            # --- Per-dimension adaptive proposal during burn-in ---
+            if step < burn and step > 0 and step % 10 == 0:
+                frac = adapt_accepted / np.maximum(adapt_proposed, 1)
+                for d in range(N_PARAMS):
+                    if frac[d] > target_accept:
+                        proposal_sigma[d] *= 1.2
+                    else:
+                        proposal_sigma[d] *= 0.8
+                print(f"Proposal sigma: {proposal_sigma}")
+                adapt_accepted[:] = 0
+                adapt_proposed[:] = 0
+
+            # --- Store post-burn-in samples (cold chain) ---
+            if step >= burn:
+                idx = step - burn
+                for w in range(nwalkers):
+                    k = len(current_signals[0][w])
+                    n_signals_chain[w, idx] = k
+                    sample = np.full((n_max, N_PARAMS), np.nan)
+                    if k > 0:
+                        params_01 = current_signals[0][w]
+                        for s in range(k):
+                            sample[s] = scaletooriginal(params_01[s], search.boundaries)
+                    chains[w, idx] = sample
+
+            if step % 500 == 0:
+                k_cold = [len(current_signals[0][w]) for w in range(nwalkers)]
+                print(
+                    f"Step {step}/{total_steps}  "
+                    f"n_signals (cold): {np.mean(k_cold):.1f} "
+                    f"[{np.min(k_cold)}-{np.max(k_cold)}]  "
+                    f"logL_max={current_loglike[0].max():.2f}  "
+                    f"within={stats['within_accept']}/{stats['within_total']}  "
+                    f"birth={stats['birth_accept']}/{stats['birth_total']}  "
+                    f"death={stats['death_accept']}/{stats['death_total']}"
+                )
+
+        return chains, n_signals_chain, stats
