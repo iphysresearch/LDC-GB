@@ -9,3 +9,5 @@ h5py
 eryn
 corner
 lisa-data-challenge
+mojito-processor
+mojito

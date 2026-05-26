@@ -392,6 +392,7 @@ class GBSearchRunner:
                 else:
                     self.frequencies_search_skipped.append(win)
 
+        self.frequencies_search = self.frequencies_search_reduced
         print("frequencies_search_reduced length", len(self.frequencies_search_reduced))
         print("frequencies_search_skipped length", len(self.frequencies_search_skipped))
         # create a dataframe of the skipped sources

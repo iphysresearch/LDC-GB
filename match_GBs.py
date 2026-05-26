@@ -578,7 +578,7 @@ def main():
     found_sources = np.array(found_df)
     
     # Check for cached results
-    cache_path = os.path.join(config.save_path, f'found_sources_{config.save_name}_{config.match_criteria}.h5')
+    cache_path = os.path.join(config.save_path, f'found_signals_{config.save_name}_{config.match_criteria}.h5')
     
     if os.path.exists(cache_path):
         print('Loading cached found sources...')
@@ -669,6 +669,7 @@ def main():
         print(search.SNR(injected_filtered[i]))
     # pipeline.plot_frequency_window(results, freq_start=0.006743, n_windows=5)
     pipeline.plot_frequency_window(results, freq_start=0.00534, n_windows=10)
+    pipeline.plot_frequency_window(results, freq_start=0.0194, n_windows=1)
     
     return results
 

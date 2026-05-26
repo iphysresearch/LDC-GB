@@ -11,7 +11,6 @@ conda activate global_gb
 
 ```
 pip install -r requirements.txt
-uv pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ mojito-processor
 ```
 
 ## How to run
@@ -181,7 +180,7 @@ specifically).
 
 ## 4) Posterior sampling (per overlapping group)
 
-`GB_posterior.py` takes the recovered sources, **groups them by overlapping “significant” frequency segments**, and then runs an RJMCMC posterior (`eryn`) **per group**. This is useful when multiple recovered sources overlap strongly in frequency and should be sampled jointly.
+`GB_posterior.py` takes the recovered sources, **groups them by overlapping “significant” frequency support**, and then runs an RJMCMC posterior (`eryn`) **per group**. This is useful when multiple recovered sources overlap strongly in frequency and should be sampled jointly.
 
 - **Grouping logic**: for each recovered source, compute the frequency interval where \(|h(f)|\) exceeds a fraction of its maximum (currently 10%). Sources whose intervals overlap are merged into the same group (the group range is the union of member ranges).
 - **Batching**: the `batch_index` argument selects which subset of groups to process (controlled by `batch_size` in `globalGB/GB_search_config.json`).
