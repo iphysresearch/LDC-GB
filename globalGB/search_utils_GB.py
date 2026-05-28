@@ -2095,7 +2095,7 @@ class GB_pe:
 
         factor = [10**-6, 10**-6, 10**-4, 10**-5, 10**-3, 10**-3, 10**-3, 10**-3]
         # factor = [10**-9, 10**-9, 10**-6, 10**-6, 10**-6, 10**-6, 10**-6, 10**-6]
-        # factor = gaussian_move_factor_GB(search, mean_01[0])
+        factor = gaussian_move_factor_GB(search, mean_01[0])
         proposal_sigma = np.full(N_PARAMS, 1) * factor
         print(f"Proposal sigma: {proposal_sigma}")
 
