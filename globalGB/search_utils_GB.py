@@ -1878,10 +1878,10 @@ class GB_pe:
         chain = ensemble.get_chain(discard=0, thin=1)["GB"][:, 0]
         self.chains_sample = []
         
-        for parameters_chain in chain:
-            for parameters_walker in parameters_chain:
+        for walker in range(chain.shape[1]):
+            for parameters_chain in chain[:, walker]:
                 self.chains_sample.append([])
-                for parameter_01 in parameters_walker:
+                for parameter_01 in parameters_chain:
                     params = scaletooriginal(parameter_01, search.boundaries)
                     self.chains_sample[-1].append(np.copy(params))
 
