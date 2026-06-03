@@ -1,6 +1,6 @@
 # Python
-# all __pycache__ directories
-__pycache__*/
+# all __pycache__ directories (any depth)
+__pycache__/
 
 *.egg-info/
 .eggs*/
