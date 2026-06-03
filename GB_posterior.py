@@ -195,16 +195,16 @@ def main(argv=None):
         channel_combination=config.channel_combination
     )
     # search.plot(injected_sources_t0)
-    snr = []
-    loglikelihood = []
-    for source in injected_sources_t0:
-        snr.append(search.SNR(source))
-        loglikelihood.append(search.loglikelihood(source))
-    snr = np.array(snr)
-    loglikelihood = np.array(loglikelihood)
-    print(f"Injected sources SNR: {snr}")
-    print(f"Injected sources loglikelihood: {loglikelihood}")
-    print(f"{'='*60}")
+    # snr = []
+    # loglikelihood = []
+    # for source in injected_sources_t0:
+    #     snr.append(search.SNR(source))
+    #     loglikelihood.append(search.loglikelihood(source))
+    # snr = np.array(snr)
+    # loglikelihood = np.array(loglikelihood)
+    # print(f"Injected sources SNR: {snr}")
+    # print(f"Injected sources loglikelihood: {loglikelihood}")
+    # print(f"{'='*60}")
 
     # Run MCMC for each group of overlapping sources
     for i, group in enumerate(groups_to_process):
@@ -268,24 +268,28 @@ def main(argv=None):
             f.attrs['t0'] = runner.t0
             f.attrs['t_init'] = t_init
             f.attrs['time_taken'] = np.round((end_time - start_time), 0)
+            f.attrs['time_stamp'] = time_stamp
         print(f"Saved chains to {chains_fn}")
 
+        # free memory
+        del chains, chains_nan_rows_removed, chains_t_init, initial_parameters_t_init, gb_pe
 
-    # load chains
-    group_index = 1171 # 2431
-    group = grouped_found_sources[group_index]
-    frequency_range = group['frequency_range']
-    chains_fn = savepath + f'/CD1Lrun2_Umbrella_v1_GB_posteriordir/CD1Lrun2_Umbrella_v1_GB_posteriors{len(chains_t_init)}_{group_index}.h5'
-    with h5py.File(chains_fn, 'r') as f:
-        g = f["chains"]
-        chains_t_init = [g[k][:] for k in sorted(g.keys(), key=lambda s: int(s.split("_")[1]))]
-        initial_parameters = f['initial_parameters'][:]
-        frequency_range_min = f.attrs['frequency_range_min']
-        frequency_range_max = f.attrs['frequency_range_max']
-        t0 = f.attrs['t0']
-        t_init = f.attrs['t_init']
-        time_taken = f.attrs['time_taken']
-        parameter_names = f.attrs['parameter_names']
+
+    # # load chains
+    # group_index = 1171 # 2431
+    # group = grouped_found_sources[group_index]
+    # frequency_range = group['frequency_range']
+    # chains_fn = savepath + f'/CD1Lrun2_Umbrella_v1_GB_posteriordir/CD1Lrun2_Umbrella_v1_GB_posteriors{len(chains_t_init)}_{group_index}.h5'
+    # with h5py.File(chains_fn, 'r') as f:
+    #     g = f["chains"]
+    #     chains_t_init = [g[k][:] for k in sorted(g.keys(), key=lambda s: int(s.split("_")[1]))]
+    #     initial_parameters = f['initial_parameters'][:]
+    #     frequency_range_min = f.attrs['frequency_range_min']
+    #     frequency_range_max = f.attrs['frequency_range_max']
+    #     t0 = f.attrs['t0']
+    #     t_init = f.attrs['t_init']
+    #     time_taken = f.attrs['time_taken']
+    #     parameter_names = f.attrs['parameter_names']
     
     
     # # plot the chains
