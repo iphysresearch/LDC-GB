@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ldc"
+version = "0.2.0"
+description = "Pipeline for searching Galactic Binaries in Mojito/LDC-style LISA data"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Stefan Strub" }]
+dependencies = [
+    "jax",
+    "jaxgb",
+    "lisaorbits",
+    "numpy",
+    "polars",
+    "pandas",
+    "matplotlib",
+    "scipy",
+    "h5py",
+    "eryn",
+    "corner",
+    "astropy",
+    "xarray",
+    "lisa-data-challenge",
+    "mojito-processor",
+    "mojito",
+]
+
+[project.optional-dependencies]
+dev = ["build", "twine", "pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[project.scripts]
+ldc-gb-search = "GB_search:main"
+ldc-gb-merge = "merge_GB_signal_files:main"
+ldc-gb-match = "match_GBs:main"
+ldc-gb-posterior = "GB_posterior:main"
+ldc-gb-residual = "residual:main"
+
+[project.urls]
+Repository = "https://github.com/stefanstrub/LDC"
+
+[tool.setuptools]
+py-modules = [
+    "GB_search",
+    "GB_posterior",
+    "match_GBs",
+    "merge_GB_signal_files",
+    "load_results",
+    "evaluate_matches",
+    "residual",
+    "shift_t_initial",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["globalGB*", "DataLoader*", "NoiseEstimate*"]
+
+[tool.setuptools.package-data]
+globalGB = ["GB_search_config.json.example"]

@@ -18,6 +18,7 @@ from jaxgb.jaxgb import JaxGB
 from jaxgb.params import GBObject
 
 from globalGB.search_utils_GB import GB_pe, PARAM_NAMES, GBConfig, GB_Searcher
+from globalGB.config import load_config
 from NoiseEstimate.noise_estimate import *
 from DataLoader.data_loader import LISADataLoader
 from globalGB.GB_runner import GBSearchRunner
@@ -42,20 +43,11 @@ def get_significant_frequency_range(source, fgb, threshold=0.1):
         return (freqs[0], freqs[-1])
     return (freqs[significant_indices[0]], freqs[significant_indices[-1]])
 
-def ranges_overlap(range1, range2):
-    """Check if two frequency ranges overlap."""
-    return range1[0] <= range2[1] and range1[1] >= range2[0]
-
-def merge_ranges(range1, range2):
-    """Merge two overlapping ranges."""
-    return (min(range1[0], range2[0]), max(range1[1], range2[1]))
-    
+from globalGB.grouping import merge_ranges, ranges_overlap
 def main(argv=None):
     args = parse_args(argv)
     batch_index = int(args.batch_index)
-    with open('globalGB/GB_search_config.json', 'r') as f:
-        config = json.load(f)
-        config = GBConfig(config)
+    config = GBConfig(load_config())
 
     runner = GBSearchRunner(
         batch_index=0,
@@ -195,21 +187,19 @@ def main(argv=None):
         channel_combination=config.channel_combination
     )
     # search.plot(injected_sources_t0)
-    snr = []
-    loglikelihood = []
-    for source in injected_sources_t0:
-        snr.append(search.SNR(source))
-        loglikelihood.append(search.loglikelihood(source))
-    snr = np.array(snr)
-    loglikelihood = np.array(loglikelihood)
-    print(f"Injected sources SNR: {snr}")
-    print(f"Injected sources loglikelihood: {loglikelihood}")
-    print(f"{'='*60}")
+    # snr = []
+    # loglikelihood = []
+    # for source in injected_sources_t0:
+    #     snr.append(search.SNR(source))
+    #     loglikelihood.append(search.loglikelihood(source))
+    # snr = np.array(snr)
+    # loglikelihood = np.array(loglikelihood)
+    # print(f"Injected sources SNR: {snr}")
+    # print(f"Injected sources loglikelihood: {loglikelihood}")
+    # print(f"{'='*60}")
 
     # Run MCMC for each group of overlapping sources
     for i, group in enumerate(groups_to_process):
-        if i != 1:
-            continue
         frequency_range = group['frequency_range']
         initial_parameters = group['sources']
         # if len(initial_parameters) == 1:
@@ -233,10 +223,10 @@ def main(argv=None):
             channel_combination=config.channel_combination
         )
         start_time = time.time()
-        # chains, ensemble = gb_pe.eryn_mcmc_GB(nsteps=10000, burn=0, ntemps=1, nwalkers=1, nleaves_max=len(initial_parameters))
+        chains, ensemble = gb_pe.eryn_mcmc_GB(nsteps=3000, burn=0, ntemps=4, nwalkers=4, nleaves_max=len(initial_parameters)+1)
         # chains, acceptance_fraction = gb_pe.MH_mcmc_GB(nsteps=20000, burn=1000, ntemps=1, nwalkers=5)
-        chains, n_signals_chain, acceptance_fraction = gb_pe.RJMCMC_GB(nsteps=10000, burn=1000, birth_weight=0, death_weight=0, ntemps=1, nwalkers=1, n_max=len(initial_parameters))
-        chains = np.concatenate(chains, axis=0)
+        # chains, n_signals_chain, acceptance_fraction = gb_pe.RJMCMC_GB(nsteps=10000, burn=1000, birth_weight=0, death_weight=0, ntemps=1, nwalkers=1, n_max=len(initial_parameters))
+        # chains = np.concatenate(chains, axis=0)
         end_time = time.time()
         print(f"Time taken: {end_time - start_time} seconds")
 
@@ -245,65 +235,79 @@ def main(argv=None):
             chains_nan_rows_removed.append(chains[~np.isnan(chains[:,leaf,:]).all(axis=1)][:,leaf,:])
 
         # transform found sources to the correct t0
-        t_init = 97729089.327664 
-        chains_t0 = []
+        t_init = 97729089.327664
+        chains_t_init = []
         # shift found sources to the same initial time
         for leaf in range(len(chains_nan_rows_removed)):
-            chains_t0_leaf = GBObject.from_jaxgb_params(jnp.array(chains_nan_rows_removed[leaf]), t_init=runner.t0).to_jaxgb_array(t0=t_init)
-            chains_t0.append(np.array(chains_t0_leaf))
+            chains_t_init_leaf = GBObject.from_jaxgb_params(jnp.array(chains_nan_rows_removed[leaf]), t_init=runner.t0).to_jaxgb_array(t0=t_init)
+            chains_t_init.append(np.array(chains_t_init_leaf))
+
+        initial_parameters_t_init = GBObject.from_jaxgb_params(jnp.array(initial_parameters), t_init=runner.t0).to_jaxgb_array(t0=t_init)
         
-        # chains_fn = savepath + f'/chains/chains_Mojito_SNR_threshold_{int(config.snr_threshold)}_group_{i+start_index}_frequency_range_{int(np.round(frequency_range[0]*1e9, 0))}nHz_to_{int(np.round(frequency_range[1]*1e9, 0))}nHz.h5'
-        # os.makedirs(os.path.dirname(chains_fn), exist_ok=True)
-        # with h5py.File(chains_fn, 'w') as f:
-        #     f.create_dataset('chains', data=chains)
-        #     f.create_dataset('initial_parameters', data=initial_parameters)
-        #     f.attrs['frequency_range_min'] = frequency_range[0]
-        #     f.attrs['frequency_range_max'] = frequency_range[1]
-        #     f.attrs['time_taken'] = np.round((end_time - start_time), 0)
-        # print(f"Saved chains to {chains_fn}")
+        time_stamp = time.strftime('%Y-%m-%dT%H-%M-%S') 
+        chains_fn = savepath + f'/CD1Lrun2_Umbrella_v1_GB_posteriordir/CD1Lrun2_Umbrella_v1_GB_posteriors{len(chains_t_init)}_{i+start_index}.h5'
+        os.makedirs(os.path.dirname(chains_fn), exist_ok=True)
+        with h5py.File(chains_fn, 'w') as f:
+            g = f.create_group("chains")
+            g.attrs["n_leaves"] = len(chains_t_init)
+            for leaf, arr in enumerate(chains_t_init):
+                g.create_dataset(f"leaf_{leaf}", data=np.asarray(arr), compression="gzip", shuffle=True)
+
+            f.create_dataset('initial_parameters', data=initial_parameters_t_init)
+            f.attrs['parameter_names'] = PARAM_NAMES
+            f.attrs['frequency_range_min'] = frequency_range[0]
+            f.attrs['frequency_range_max'] = frequency_range[1]
+            f.attrs['t0'] = runner.t0
+            f.attrs['t_init'] = t_init
+            f.attrs['time_taken'] = np.round((end_time - start_time), 0)
+            f.attrs['time_stamp'] = time_stamp
+        print(f"Saved chains to {chains_fn}")
+
+        # free memory
+        del chains, chains_nan_rows_removed, chains_t_init, initial_parameters_t_init, gb_pe
 
 
     # # load chains
-    # group_index = 2431
+    # group_index = 1171 # 2431
     # group = grouped_found_sources[group_index]
     # frequency_range = group['frequency_range']
-    # chains_fn = savepath + f'/chains/chains_Mojito_SNR_threshold_{int(config.snr_threshold)}_group_{group_index}_frequency_range_{int(np.round(frequency_range[0]*1e9, 0))}nHz_to_{int(np.round(frequency_range[1]*1e9, 0))}nHz.h5'
+    # chains_fn = savepath + f'/CD1Lrun2_Umbrella_v1_GB_posteriordir/CD1Lrun2_Umbrella_v1_GB_posteriors{len(chains_t_init)}_{group_index}.h5'
     # with h5py.File(chains_fn, 'r') as f:
-    #     chains = f['chains'][:]
+    #     g = f["chains"]
+    #     chains_t_init = [g[k][:] for k in sorted(g.keys(), key=lambda s: int(s.split("_")[1]))]
     #     initial_parameters = f['initial_parameters'][:]
     #     frequency_range_min = f.attrs['frequency_range_min']
     #     frequency_range_max = f.attrs['frequency_range_max']
+    #     t0 = f.attrs['t0']
+    #     t_init = f.attrs['t_init']
+    #     time_taken = f.attrs['time_taken']
+    #     parameter_names = f.attrs['parameter_names']
     
-    # remove all rows where all elements are nan
-    # chains_nan_rows_removed0 = chains[~np.isnan(chains[:,0,:]).all(axis=1)][:,0,:]
-    # plot the chains
-    chains_plot = chains_t0[0]
-    # chains_plot = chains_t0[:,:,2,:]
-    # chains_plot = np.concatenate(chains_plot, axis=0)
+    
+    # # plot the chains
+    # chains_plot = chains_t_init[0]
     # fig = plt.figure()
     # for i in range(chains_plot.shape[1]):
     #     plt.plot(chains_plot[:,i]-chains_plot[0,i], label=PARAM_NAMES[i])
     # plt.legend()
     # plt.show(block=True)
 
-    # chains_nan_rows_removed1 = chains[~np.isnan(chains[:,1,:]).all(axis=1)][:,1,:]
-    # swap Frequency and Amplitude
-    chains_plot_swapped = chains_plot[:, [2, 0, 1, 3, 4, 5, 6, 7]]
-    new_param_names = [
-    "Amplitude",
-    "Frequency",
-    "FrequencyDerivative",
-    "RightAscension",
-    "Declination",
-    "Polarization",
-    "Inclination",
-    "InitialPhase",
-    ]
-    fig = corner.corner(chains_plot_swapped, labels=new_param_names, truths=injected_sources[0, [2, 0, 1, 3, 4, 5, 6, 7]], smooth=True, smooth1d=True)
-    # corner.corner(chains_nan_rows_removed1, color='r', labels=PARAM_NAMES, fig=fig)
-    plt.tight_layout()
-    plt.show(block=True)
+    # # swap Frequency and Amplitude
+    # chains_plot_swapped = chains_plot[:, [2, 0, 1, 3, 4, 5, 6, 7]]
+    # new_param_names = [
+    # "Amplitude",
+    # "Frequency",
+    # "FrequencyDerivative",
+    # "RightAscension",
+    # "Declination",
+    # "Polarization",
+    # "Inclination",
+    # "InitialPhase",
+    # ]
+    # fig = corner.corner(chains_plot_swapped, labels=new_param_names, truths=injected_sources[0, [2, 0, 1, 3, 4, 5, 6, 7]], smooth=True, smooth1d=True)
+    # # corner.corner(chains_nan_rows_removed1, color='r', labels=PARAM_NAMES, fig=fig)
+    # plt.tight_layout()
+    # plt.show(block=True)
     
-    print(f"{'='*60}")
 if __name__ == "__main__":
     main(argv=sys.argv[1:])

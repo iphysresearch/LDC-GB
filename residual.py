@@ -1,5 +1,5 @@
-import json
 from globalGB.GB_runner import GBSearchRunner
+from globalGB.config import load_config
 from globalGB.search_utils_GB import GBConfig
 from jaxgb.jaxgb import JaxGB
 import h5py
@@ -9,9 +9,7 @@ import matplotlib.pyplot as plt
 
 
 def main(argv=None):
-    with open('globalGB/GB_search_config.json', 'r') as f:
-        config = json.load(f)
-        config = GBConfig(config)
+    config = GBConfig(load_config())
     runner = GBSearchRunner(
         batch_index=0,
         which_run="even",

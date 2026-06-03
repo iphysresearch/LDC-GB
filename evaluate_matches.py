@@ -31,6 +31,7 @@ import jax.numpy as jnp
 
 import json
 from globalGB.search_utils_GB import GBConfig
+from globalGB.config import load_config
 from DataLoader.data_loader import LISADataLoader
 
 from globalGB.search_utils_GB import PARAM_NAMES, PARAM_INDICES, frequency_derivative_mojito_lower, frequency_derivative_mojito_upper
@@ -61,9 +62,7 @@ end_string = '_scaled_error_injected_snr'+str(injected_SNR)
 
 channel_combination = 'AET'
 
-with open('globalGB/GB_search_config.json', 'r') as f:
-    config = json.load(f)
-    config = GBConfig(config)
+config = GBConfig(load_config())
 loader = LISADataLoader(config=config)
 data_fn = config.data_path
 loader.load(data_fn, dt=dt, channel_combination=channel_combination)
@@ -251,7 +250,7 @@ Z = found_sources_list[data_set]['Match']
 
 fig, ax = plt.subplots(1,1, figsize=fig_size)
 im = ax.scatter(X,Y,c=Z, norm= LogNorm(vmin=0.001, vmax=1), s=3)
-fig.colorbar(im, ax=ax, label='$\delta$')
+fig.colorbar(im, ax=ax, label=r'$\delta$')
 ax.set_xlim(0,2*np.pi)
 ax.set_ylim(-np.pi/2,np.pi/2)
 ax.set_xlabel(labels[parameter_x])
@@ -502,7 +501,7 @@ parameter_order_reduced = [
 #     # error, std, count_not_matched, bin_boundaries_x, bin_boundaries_y = get_2d_hist(found_sources_not_matched_list[data_set], get_errors=False)
 #     error, std, count, bin_boundaries_x, bin_boundaries_y = get_2d_hist(found_sources_matched_list[data_set], get_errors=True, parameter_to_plot=parameter_to_plot)
 #     im = ax.pcolormesh(bin_boundaries_x,bin_boundaries_y, np.array(error).T)
-#     fig.colorbar(im, ax=ax, label='$\Delta$'+labels[parameter])
+#     fig.colorbar(im, ax=ax, label=r'$\Delta$'+labels[parameter])
 #     # ax.set_title(parameter_to_plot)
 #     ax.set_yscale('log')
 #     ax.set_xscale('log')
@@ -539,12 +538,12 @@ for ax, parameter in zip(axs.flat, parameter_order):
         ax.hist(found_sources_matched_df[parameter+'Error'], bins=np.logspace(-5,np.log10(np.pi/2), n_bins), log= False, density=False, histtype='step', linewidth=line_width)
     else:
         ax.hist(found_sources_matched_df[parameter+'Error'], bins=n_bins, density=False, histtype='step', linewidth=line_width)
-    ax.set_xlabel('$\Delta$'+parameter)
+    ax.set_xlabel(r'$\Delta$'+parameter)
     if parameter == 'Skylocation':
-        ax.set_xlabel('$\Delta$'+labels[parameter]+' (deg)')
+        ax.set_xlabel(r'$\Delta$'+labels[parameter]+' (deg)')
         ax.set_xscale('log')
     if parameter == 'Inclination':
-        ax.set_xlabel('$\Delta$'+labels[parameter])
+        ax.set_xlabel(r'$\Delta$'+labels[parameter])
         ax.set_xlim(10**-5,np.pi/2)
         ax.set_xscale('log')
     if parameter == 'Amplitude':
@@ -553,7 +552,7 @@ for ax, parameter in zip(axs.flat, parameter_order):
         ax.set_xlim(10**-4,10)
     if parameter == 'FrequencyDerivative':
         ax.set_xscale('log')
-        ax.set_xlabel('$\Delta$'+labels[parameter])
+        ax.set_xlabel(r'$\Delta$'+labels[parameter])
         ax.set_xlim(10**-19,10**-13)
     if parameter == 'Frequency':
         ax.set_xscale('log')
@@ -561,10 +560,10 @@ for ax, parameter in zip(axs.flat, parameter_order):
         # ax.ylim(0,10**3)
         ax.set_xlabel(r'$\Delta f / f_{true}$')
     if parameter in [ 'InitialPhase', 'Polarization']:
-        ax.set_xlabel('$\Delta$'+labels[parameter])
+        ax.set_xlabel(r'$\Delta$'+labels[parameter])
         ax.set_xlim(0,np.pi/2)
     if parameter in ['RightAscension', 'Declination']:
-        ax.set_xlabel('$\Delta$'+labels[parameter])
+        ax.set_xlabel(r'$\Delta$'+labels[parameter])
         ax.set_xlim(10**-5,np.pi/2)
         ax.set_xscale('log')
     # ax.legend(custom_lines, [label1, label2, label3], loc='best')
@@ -633,12 +632,12 @@ for ax, parameter in zip(axs.flat, parameter_order):
             ax.hist(found_sources_matched_list[i][parameter+'Error'], bins=np.logspace(-5,np.log10(np.pi/2), n_bins), log= False, density=False, histtype='step', linestyle=linestyle[i], color=colors[i], linewidth=line_width)
         else:
             ax.hist(found_sources_matched_list[i][parameter+'Error'], bins=n_bins, density=False, histtype='step', linestyle=linestyle[i], color=colors[i], linewidth=line_width)
-    ax.set_xlabel('$\Delta$'+parameter)
+    ax.set_xlabel(r'$\Delta$'+parameter)
     if parameter == 'Skylocation':
-        ax.set_xlabel('$\Delta$'+labels[parameter]+' (deg)')
+        ax.set_xlabel(r'$\Delta$'+labels[parameter]+' (deg)')
         ax.set_xscale('log')
     if parameter == 'Inclination':
-        ax.set_xlabel('$\Delta$'+labels[parameter])
+        ax.set_xlabel(r'$\Delta$'+labels[parameter])
         ax.set_xlim(10**-5,np.pi/2)
         ax.set_xscale('log')
     if parameter == 'Amplitude':
@@ -647,7 +646,7 @@ for ax, parameter in zip(axs.flat, parameter_order):
         ax.set_xlim(10**-4,10)
     if parameter == 'FrequencyDerivative':
         ax.set_xscale('log')
-        ax.set_xlabel('$\Delta$'+labels[parameter])
+        ax.set_xlabel(r'$\Delta$'+labels[parameter])
         ax.set_xlim(10**-19,10**-13)
     if parameter == 'Frequency':
         ax.set_xscale('log')
@@ -655,10 +654,10 @@ for ax, parameter in zip(axs.flat, parameter_order):
         # ax.ylim(0,10**3)
         ax.set_xlabel(r'$\Delta f / f_{true}$')
     if parameter in [ 'InitialPhase', 'Polarization']:
-        ax.set_xlabel('$\Delta$'+labels[parameter])
+        ax.set_xlabel(r'$\Delta$'+labels[parameter])
         ax.set_xlim(0,np.pi/2)
     if parameter in ['EclipticLongitude', 'EclipticLatitude']:
-        ax.set_xlabel('$\Delta$'+labels[parameter])
+        ax.set_xlabel(r'$\Delta$'+labels[parameter])
         ax.set_xlim(10**-5,np.pi/2)
         ax.set_xscale('log')
     # ax.legend(custom_lines, [label1, label2, label3], loc='best')
@@ -685,7 +684,7 @@ fig, ax1 = plt.subplots(1,1, figsize=fig_size)
 for i in range(4):
     ax1.hist(match_flat_list[i], bins= np.linspace(0,upper_bound,n_bins), histtype='step', linestyle=linestyle[i], linewidth=2, color=colors[i])
     # ax2.hist(match_flat_list[i], bins= np.linspace(0,upper_bound,n_bins), histtype='step', linestyle=linestyle[i], linewidth=2, color=colors[i])
-plt.xlabel('$\delta$')
+plt.xlabel(r'$\delta$')
 plt.ylabel('Count')
 # plt.yscale('log')
 plt.legend(custom_lines, labels_plot, loc='upper right')
@@ -715,14 +714,14 @@ for i in range(4):
     # axs.hist(olap_high, histtype=u'step', density=True)
 ax1.grid(True)
 # ax1.set_ylabel('fraction of counts > $\delta$')
-ax1.set_ylabel('fraction of counts < $\mathcal{O}$')
+ax1.set_ylabel(r'fraction of counts < $\mathcal{O}$')
 ax1.set_xlim(0,1)
 ax1.set_ylim(0,1)
 ax2.grid(True)
-# ax2.set_xlabel('$\delta$')
+# ax2.set_xlabel(r'$\delta$')
 # ax2.set_ylabel('total counts < $\delta$')
-ax2.set_xlabel('$\mathcal{O}$')
-ax2.set_ylabel('total counts > $\mathcal{O}$')
+ax2.set_xlabel(r'$\mathcal{O}$')
+ax2.set_ylabel(r'total counts > $\mathcal{O}$')
 ax2.set_xlim(0,1)
 # ax2.set_ylim(0,1)
 ax1.legend()
@@ -737,7 +736,7 @@ vmax = [20,20,10,10]
 for i in range(4):
     fig = plt.figure(figsize=fig_size, constrained_layout=True)
     plt.hist2d(match_flat_list[i], match_best_list[i]['IntrinsicSNR'], bins= (np.linspace(0,upper_boundx,n_bins),np.linspace(5,upper_boundy,n_bins)), vmin=0)
-    plt.xlabel('$\delta$')
+    plt.xlabel(r'$\delta$')
     plt.ylabel('SNR')
     plt.title(labels_plot[i])
     plt.colorbar( )

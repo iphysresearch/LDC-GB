@@ -18,11 +18,11 @@ import sys
 from os import listdir
 from os.path import isfile, join
 from typing import List, Tuple
-import json
 import h5py
 import numpy as np
 
 from globalGB.search_utils_GB import PARAM_INDICES
+from globalGB.config import load_config
 
 
 def load_sources_from_file(path: str) -> Tuple[np.ndarray, np.ndarray]:
@@ -69,7 +69,7 @@ def flatten_found_sources(
         if number_of_evaluations.size > 0:
             total_number_of_evaluations += np.sum(number_of_evaluations)
     if not all_sources:
-        return np.empty((0, len(PARAM_INDICES)))
+        return np.empty((0, len(PARAM_INDICES))), total_time, total_number_of_evaluations
     return np.concatenate(all_sources), total_time, total_number_of_evaluations
 
 
@@ -111,8 +111,7 @@ def main(argv: list[str] | None = None) -> None:
 
     which_run = str(argv[0])
 
-    with open('globalGB/GB_search_config.json', 'r') as f:
-        config = json.load(f)
+    config = load_config()
     base_found_dir = config["save_path"]
 
     # Paths are currently hard-coded for Mojito, SNR threshold 9 and seed 1.

@@ -10,7 +10,30 @@ conda activate global_gb
 ```
 
 ```
+pip install -e .
+```
+
+Or install dependencies only:
+
+```
 pip install -r requirements.txt
+```
+
+Copy the example config and edit paths:
+
+```bash
+cp globalGB/GB_search_config.json.example globalGB/GB_search_config.json
+```
+
+Alternatively, set `LDC_CONFIG` to point at your config file.
+
+After install, CLI entry points are available:
+
+```bash
+ldc-gb-search even1st 0
+ldc-gb-merge even1st
+ldc-gb-match
+ldc-gb-posterior even 0
 ```
 
 ## How to run

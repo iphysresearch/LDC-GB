@@ -1,10 +1,11 @@
 # Python
+# all __pycache__ directories (any depth)
 __pycache__/
-*.py[cod]
+
 *.egg-info/
-.eggs/
-dist/
-build/
+.eggs*/
+dist*/
+build*/
 
 # IDE
 .vscode/
