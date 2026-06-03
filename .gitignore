@@ -1,5 +1,15 @@
 # Python
+# all __pycache__ directories
 __pycache__/
+# all .pyc files
+*.pyc
+# all .pyo files
+*.pyo
+# all .pyd files
+*.pyd
+# all .pyw files
+*.pyw
+
 *.py[cod]
 *.egg-info/
 .eggs/
