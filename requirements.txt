@@ -3,11 +3,14 @@ jaxgb
 lisaorbits
 numpy
 polars
+pandas
 matplotlib
 scipy
 h5py
 eryn
 corner
+astropy
+xarray
 lisa-data-challenge
 mojito-processor
 mojito

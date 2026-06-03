@@ -27,6 +27,7 @@ from jaxgb.jaxgb import JaxGB
 from jaxgb.params import GBObject
 
 from globalGB.search_utils_GB import GB_Searcher, create_frequency_windows, max_signal_bandwidth, PARAM_NAMES, PARAM_INDICES, GBConfig
+from globalGB.config import load_config
 from DataLoader.data_loader import LISADataLoader
 
 # Configure JAX
@@ -546,9 +547,8 @@ def main():
     np.random.seed(42)
     
     # Parse command line arguments
-    with open('globalGB/GB_search_config.json', 'r') as f:
-        config_dict = json.load(f)
-        config = GBConfig(config_dict)
+    config_dict = load_config()
+    config = GBConfig(config_dict)
 
     loader = LISADataLoader(config=config)
     loader.load(

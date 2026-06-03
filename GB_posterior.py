@@ -18,6 +18,7 @@ from jaxgb.jaxgb import JaxGB
 from jaxgb.params import GBObject
 
 from globalGB.search_utils_GB import GB_pe, PARAM_NAMES, GBConfig, GB_Searcher
+from globalGB.config import load_config
 from NoiseEstimate.noise_estimate import *
 from DataLoader.data_loader import LISADataLoader
 from globalGB.GB_runner import GBSearchRunner
@@ -53,9 +54,7 @@ def merge_ranges(range1, range2):
 def main(argv=None):
     args = parse_args(argv)
     batch_index = int(args.batch_index)
-    with open('globalGB/GB_search_config.json', 'r') as f:
-        config = json.load(f)
-        config = GBConfig(config)
+    config = GBConfig(load_config())
 
     runner = GBSearchRunner(
         batch_index=0,

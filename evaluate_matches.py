@@ -31,6 +31,7 @@ import jax.numpy as jnp
 
 import json
 from globalGB.search_utils_GB import GBConfig
+from globalGB.config import load_config
 from DataLoader.data_loader import LISADataLoader
 
 from globalGB.search_utils_GB import PARAM_NAMES, PARAM_INDICES, frequency_derivative_mojito_lower, frequency_derivative_mojito_upper
@@ -61,9 +62,7 @@ end_string = '_scaled_error_injected_snr'+str(injected_SNR)
 
 channel_combination = 'AET'
 
-with open('globalGB/GB_search_config.json', 'r') as f:
-    config = json.load(f)
-    config = GBConfig(config)
+config = GBConfig(load_config())
 loader = LISADataLoader(config=config)
 data_fn = config.data_path
 loader.load(data_fn, dt=dt, channel_combination=channel_combination)
