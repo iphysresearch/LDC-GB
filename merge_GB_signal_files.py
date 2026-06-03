@@ -69,7 +69,7 @@ def flatten_found_sources(
         if number_of_evaluations.size > 0:
             total_number_of_evaluations += np.sum(number_of_evaluations)
     if not all_sources:
-        return np.empty((0, len(PARAM_INDICES)))
+        return np.empty((0, len(PARAM_INDICES))), total_time, total_number_of_evaluations
     return np.concatenate(all_sources), total_time, total_number_of_evaluations
 
 

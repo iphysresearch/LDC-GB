@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
-from GB_posterior import merge_ranges, ranges_overlap
+from globalGB.grouping import merge_ranges, ranges_overlap
 
 
 @pytest.mark.parametrize(

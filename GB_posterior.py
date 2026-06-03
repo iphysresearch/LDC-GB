@@ -43,14 +43,7 @@ def get_significant_frequency_range(source, fgb, threshold=0.1):
         return (freqs[0], freqs[-1])
     return (freqs[significant_indices[0]], freqs[significant_indices[-1]])
 
-def ranges_overlap(range1, range2):
-    """Check if two frequency ranges overlap."""
-    return range1[0] <= range2[1] and range1[1] >= range2[0]
-
-def merge_ranges(range1, range2):
-    """Merge two overlapping ranges."""
-    return (min(range1[0], range2[0]), max(range1[1], range2[1]))
-    
+from globalGB.grouping import merge_ranges, ranges_overlap
 def main(argv=None):
     args = parse_args(argv)
     batch_index = int(args.batch_index)
